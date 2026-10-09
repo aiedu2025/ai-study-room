@@ -1,0 +1,856 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="light dark">
+    <meta name="darkreader-lock">
+    <title>自习室</title>
+    <!-- 站点图标（我方定制 · 可逆补丁 favicon-link）：
+         顺带消掉浏览器自动请求 /favicon.ico 产生的 404，
+         也让这个原本无人引用的上游图标真正被用上。 -->
+    <link rel="icon" href="logo_256.ico" sizes="256x256">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="break-board" id="breakBoard">
+        <div class="break-board-title">☕ 课间休息</div>
+        <div class="break-board-time" id="breakTime">00:00</div>
+        <div class="break-options" id="breakOptions">
+            <button class="break-option-btn" data-min="5">5分钟</button>
+            <button class="break-option-btn" data-min="10">10分钟</button>
+            <button class="break-option-btn" data-min="15">15分钟</button>
+            <div class="break-custom">
+                <input type="number" id="breakCustomInput" class="break-custom-input" min="1" max="120" placeholder="自定义">
+                <button class="break-option-btn" id="breakCustomBtn">开始</button>
+            </div>
+        </div>
+        <div class="break-countdown" id="breakCountdown" style="display:none;">
+            <div class="break-countdown-text">距离结束还有</div>
+            <div class="break-countdown-time" id="breakCountdownTime">00:00</div>
+        </div>
+        <div class="break-board-hint" id="breakHint">点击「继续自习」返回学习</div>
+    </div>
+
+    <div class="parallax-container" id="parallaxContainer">
+        <div class="parallax-bg"></div>
+        <div class="parallax-bg-study" id="studyBg"></div>
+        <div class="parallax-bg-overlay" id="bgOverlay"></div>
+        <!-- 动态壁纸渲染层 -->
+        <div class="dynamic-wallpaper-layer" id="dynamicWallpaperLayer" style="display:none;"></div>
+    </div>
+
+    <!-- 玻璃球（独立于parallax-container以支持点击） -->
+    <div class="glass-orb glass-orb-1"></div>
+    <div class="glass-orb glass-orb-2"></div>
+    <div class="glass-orb glass-orb-3"></div>
+    <div class="glass-orb glass-orb-4"></div>
+
+    <!-- 雷雨体积云：后景（z-index:3，在按钮后面，Three.js shader 渲染） -->
+    <canvas class="thunder-cloud-canvas thunder-cloud-back-canvas" id="thunderCloudBack"></canvas>
+
+    <!-- 全局雾气层（z-index:5，在云之上、UI 之下） -->
+    <div class="thunder-fog-overlay" id="thunderFogOverlay"></div>
+
+    <!-- 雷雨前景云：偶尔飘过，可遮挡所有组件（z-index:10000） -->
+    <div class="thunder-cloud-front-canvas" id="thunderCloudFront"></div>
+
+    <!-- 冷气白雾：从屏幕上方中间向下扩散（z-index:3，在UI后面） -->
+    <canvas class="ac-mist-canvas" id="acMistCanvas"></canvas>
+    <!-- 篝火光照：从屏幕下方向上照亮（z-index:3，在UI后面） -->
+    <canvas class="bonfire-canvas" id="bonfireCanvas"></canvas>
+    <!-- 萤火虫：森林午夜效果（z-index:9998，screen混合） -->
+    <canvas class="firefly-canvas" id="fireflyCanvas"></canvas>
+
+    <div class="current-time" id="currentTime">
+        <span id="currentTimeText">00:00<span class="seconds">:00</span></span>
+    </div>
+
+    <button id="fullscreenBtn" onclick="toggleFullscreen()" style="position:absolute;top:25px;left:35px;width:45px;height:45px;font-size:16px;background:rgba(0,0,0,0.35);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:12px;cursor:pointer;z-index:100;display:flex;align-items:center;justify-content:center;box-sizing:border-box;">
+        <span id="fullscreenIcon">⛶</span>
+    </button>
+
+    <button id="exitFullscreenBtn" onclick="toggleFullscreen()" style="position:absolute;top:25px;left:35px;width:45px;height:45px;font-size:16px;background:rgba(0,0,0,0.35);color:white;border:1px solid rgba(255,255,255,0.12);border-radius:12px;cursor:pointer;z-index:100;display:flex;align-items:center;justify-content:center;box-sizing:border-box;display:none;">
+        <span id="exitFullscreenIcon">◉</span>
+    </button>
+
+    <button class="stop-btn" id="stopBtn" onclick="stopStudy()">结束自习</button>
+
+    <button class="break-btn" id="breakBtn" onclick="toggleBreak()">⏸️ 课间休息</button>
+
+    <button id="soundBtn" onclick="showSoundModal()">🎵 环境</button>
+    <button id="settingsBtn" onclick="showSettingsModal()">⚙️ 设置</button>
+
+    <div class="main-container">
+        <div class="button-group">
+            <button class="btn btn-start" id="startBtn" onclick="showStartModal()">开始自习</button>
+            <button class="btn btn-records" id="recordsBtn" onclick="showRecords()">过去自习记录</button>
+        </div>
+    </div>
+
+    <div class="study-display" id="studyDisplay">
+        <div class="study-time" id="studyTime">00:00:00</div>
+        <div class="study-status" id="studyStatus"></div>
+    </div>
+
+    <div class="modal" id="startModal">
+        <div class="modal-content">
+            <h2>选择自习方式</h2>
+            <div class="study-type-section" id="studyTypeSection">
+                <div class="study-type-label">本次自习内容</div>
+                <div class="study-type-buttons" id="studyTypeButtons"></div>
+                <input type="text" id="studyTypeInput" class="study-type-input" placeholder="请输入自习内容" maxlength="20" style="display:none;">
+            </div>
+            <div class="modal-buttons" id="startOptions">
+                <button class="modal-btn modal-btn-direct" onclick="startStudy(0)">直接开始</button>
+                <button class="modal-btn modal-btn-timed" onclick="showTimeInput()">设定时间</button>
+            </div>
+            <div class="time-input-container" id="timeInputContainer">
+                <div class="time-input-box">
+                    <input type="number" id="timeInput" placeholder="请输入分钟数" min="1">
+                    <span class="time-unit">分钟</span>
+                </div>
+                <button onclick="startStudyWithTime()">确认开始</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal records-modal" id="recordsModal">
+        <div class="modal-content records-content">
+            <div class="modal-header">
+                <h2>自习记录</h2>
+                <button class="trash-btn" onclick="showTrashModal()">🗑️ 回收站</button>
+            </div>
+            <div class="total-time" id="totalTime">总自习时长: 00:00:00</div>
+            <div class="charts-container" id="chartsContainer">
+                <div class="chart-panel" id="hourChartPanel">
+                    <h3>今日时段分布</h3>
+                    <div class="hour-chart" id="hourChart"></div>
+                </div>
+                <div class="chart-panel" id="dayChartPanel">
+                    <div class="chart-header">
+                        <h3>自习时长对比</h3>
+                        <button class="chart-toggle-btn" id="chartToggleBtn" onclick="toggleChartMode()">📊 全部天数</button>
+                    </div>
+                    <div class="day-chart" id="dayChart"></div>
+                </div>
+                <div class="chart-panel" id="pieChartPanel" style="position:relative;">
+                    <div class="pie-chart-header">
+                        <button class="pie-nav-btn" id="piePrevBtn" onclick="prevPieDay()" title="前一天">&#10094;</button>
+                        <h3 id="pieChartTitle">今日自习类型占比</h3>
+                        <button class="pie-nav-btn" id="pieNextBtn" onclick="nextPieDay()" title="后一天">&#10095;</button>
+                    </div>
+                    <button class="more-charts-corner-btn" onclick="openMoreCharts()" id="moreChartsToggleBtn">📊 更多图表</button>
+                    <div class="pie-chart-wrapper">
+                        <canvas id="pieChart"></canvas>
+                        <div class="pie-chart-legend" id="pieChartLegend"></div>
+                    </div>
+                </div>
+            </div>
+            <div class="line-chart-container" id="lineChartContainer" style="display: none;">
+                <div class="chart-header">
+                    <h3>全部自习时长趋势</h3>
+                    <button class="chart-toggle-btn" onclick="toggleChartMode()">📊 近6天</button>
+                </div>
+                <div class="line-chart-wrapper" id="lineChartWrapper">
+                    <canvas id="lineChart"></canvas>
+                </div>
+            </div>
+            <div class="records-list" id="recordsList"></div>
+            <!-- 更多图表面板 -->
+            <div class="more-charts-panel" id="moreChartsPanel" style="display:none;">
+                <div class="more-charts-header">
+                    <button class="more-charts-back-btn" onclick="closeMoreCharts()">‹ 返回</button>
+                    <span class="more-charts-title">更多图表</span>
+                </div>
+                <div class="more-charts-total-time" id="moreChartsTotalTime"></div>
+                <!-- 1. 各类别时长变化折线图 -->
+                <div class="more-chart-section">
+                    <div class="chart-header">
+                        <h3>各类别时长变化</h3>
+                        <button class="chart-toggle-btn" id="catLineFilterBtn" onclick="toggleCatLineFilter()">📊 近7天</button>
+                    </div>
+                    <div class="category-line-chart-wrapper" id="categoryLineChartWrapper">
+                        <canvas id="categoryLineChart"></canvas>
+                    </div>
+                    <div class="category-line-legend" id="categoryLineLegend"></div>
+                </div>
+                <!-- 2. 年度热力图 -->
+                <div class="more-chart-section">
+                    <div class="heatmap-header">
+                        <button class="heatmap-year-btn" id="heatmapPrevYear" onclick="heatmapPrevYearFn()">‹</button>
+                        <h3 id="heatmapYearTitle">2026</h3>
+                        <button class="heatmap-year-btn" id="heatmapNextYear" onclick="heatmapNextYearFn()">›</button>
+                    </div>
+                    <div class="heatmap-month-labels" id="heatmapMonthLabels"></div>
+                    <div class="heatmap-container" id="heatmapContainer"></div>
+                    <div class="heatmap-legend">
+                        <span>少</span>
+                        <div class="heatmap-legend-blocks">
+                            <div class="heatmap-legend-block" style="background:rgba(116,185,255,0.08)"></div>
+                            <div class="heatmap-legend-block" style="background:rgba(116,185,255,0.25)"></div>
+                            <div class="heatmap-legend-block" style="background:rgba(116,185,255,0.5)"></div>
+                            <div class="heatmap-legend-block" style="background:rgba(116,185,255,0.75)"></div>
+                            <div class="heatmap-legend-block" style="background:rgba(116,185,255,1)"></div>
+                        </div>
+                        <span>多</span>
+                    </div>
+                </div>
+                <!-- 3. 每日时间轴 -->
+                <div class="more-chart-section">
+                    <div class="timeline-section-header">
+                        <h3>每日时间轴</h3>
+                        <div class="timeline-day-nav">
+                            <button class="heatmap-year-btn" id="timelinePrevDay" onclick="timelinePrevDayFn()">‹</button>
+                            <span class="timeline-day-label" id="timelineDayLabel">今天</span>
+                            <button class="heatmap-year-btn" id="timelineNextDay" onclick="timelineNextDayFn()">›</button>
+                        </div>
+                    </div>
+                    <div class="daily-timeline-wrapper" id="dailyTimelineWrapper">
+                        <div class="timeline-axis-labels">
+                            <span>0:00</span><span>3:00</span><span>6:00</span><span>9:00</span><span>12:00</span><span>15:00</span><span>18:00</span><span>21:00</span><span>24:00</span>
+                        </div>
+                        <div class="timeline-bar-container" id="timelineBarContainer"></div>
+                    </div>
+                    <div class="timeline-legend" id="timelineLegend"></div>
+                    <div class="timeline-analysis" id="timelineAnalysis"></div>
+                    <div class="timeline-overall-stats" id="timelineOverallStats"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal trash-modal" id="trashModal">
+        <div class="modal-content trash-content">
+            <div class="modal-header">
+                <h2>🗑️ 回收站</h2>
+                <button class="empty-trash-btn" onclick="emptyTrash()">清空回收站</button>
+            </div>
+            <div class="records-list" id="trashList"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="soundModal">
+        <div class="modal-content sound-modal-content">
+            <h2>选择环境</h2>
+            <div class="sound-list" id="soundList"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="settingsModal">
+        <div class="modal-content settings-modal-content">
+            <h2>⚙️ 设置</h2>
+            <div class="settings-content" id="settingsMainPanel">
+                <div class="setting-item">
+                    <div class="volume-control">
+                        <label>🔊 音量</label>
+                        <input type="range" id="volumeSlider" class="volume-slider" min="0" max="100" value="50">
+                        <span class="volume-value" id="volumeValue">50%</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <label style="justify-content: space-between;">
+                        <span>主题设置</span>
+                        <div class="theme-options">
+                            <button class="theme-option active" data-theme="rounded" id="themeRounded">圆润如玉</button>
+                            <button class="theme-option" data-theme="square" id="themeSquare">方正有力</button>
+                        </div>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="justify-content: space-between;">
+                        <span>外观模式</span>
+                        <div class="light-options">
+                            <button class="light-option active" data-light="on" id="lightOn">浅色模式</button>
+                            <button class="light-option" data-light="off" id="lightOff">深色模式</button>
+                        </div>
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" id="envFxParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openEnvFxParams();">
+                        <span>环境特效控制</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="envFxEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" onclick="openWallpaperPanel()">
+                    <div class="setting-nav-left">
+                        <span>自定义壁纸</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                </div>
+                <div class="setting-item setting-nav-row" onclick="openEntryManager()">
+                    <div class="setting-nav-left">
+                        <span>词条管理</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                </div>
+                <div class="setting-item">
+                    <label>
+                        <div class="setting-label-row">
+                            <span>进入自习时自动全屏</span>
+                            <div class="panel-help-wrapper">
+                                <span class="panel-help-icon">?</span>
+                                <div class="panel-help-tooltip">开启后，每次开始自习时自动进入浏览器全屏模式，退出自习时自动退出全屏</div>
+                            </div>
+                        </div>
+                        <input type="checkbox" id="autoFullscreen">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label>
+                        <div class="setting-label-row">
+                            <span>学习提醒休息时间</span>
+                            <div class="panel-help-wrapper">
+                                <span class="panel-help-icon">?</span>
+                                <div class="panel-help-tooltip">连续自习达到设定时长后，会弹出提醒建议休息，避免过度疲劳</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="restReminderTime" min="5" max="120" value="50" style="width: 60px; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white; text-align: center;">
+                            <span style="color: rgba(255,255,255,0.7); font-size: 14px;">分钟</span>
+                        </div>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label>
+                        <div class="setting-label-row">
+                            <span>保持屏幕常亮间隔</span>
+                            <div class="panel-help-wrapper">
+                                <span class="panel-help-icon">?</span>
+                                <div class="panel-help-tooltip">每隔设定时间自动唤醒屏幕，防止自习期间屏幕自动熄灭</div>
+                            </div>
+                        </div>
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="number" id="screenWakeTime" min="1" max="30" value="3" style="width: 60px; padding: 6px; background: rgba(255,255,255,0.1); border: 1px solid rgba(255,255,255,0.2); border-radius: 6px; color: white; text-align: center;">
+                            <span style="color: rgba(255,255,255,0.7); font-size: 14px;">分钟</span>
+                        </div>
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <div class="setting-buttons">
+                        <button class="btn btn-export" onclick="exportRecords()">📥 导出记录</button>
+                        <button class="btn btn-import" onclick="importRecords()">📤 导入记录</button>
+                    </div>
+                </div>
+
+            </div>
+            <div class="settings-content" id="envFxParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeEnvFxParams()">‹ 返回</button>
+                    <span class="settings-panel-title">环境特效控制</span>
+                    <div class="panel-help-wrapper" style="margin-left:auto;">
+                        <span class="panel-help-icon">?</span>
+                        <div class="panel-help-tooltip">控制自习环境中各种视觉特效的开关与参数调节，总开关关闭时所有特效不生效</div>
+                    </div>
+                    <button style="background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.15);color:rgba(255,255,255,0.7);border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;transition:all 0.3s ease;" onmouseover="this.style.background='rgba(255,255,255,0.15)'" onmouseout="this.style.background='rgba(255,255,255,0.08)'" onclick="resetEnvFxDefaults()">恢复默认</button>
+                </div>
+                <div class="setting-item setting-nav-row" id="thunderCloudParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openThunderCloudParams();">
+                        <span>云雾效果</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="thunderCloudEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" id="rainCardParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openRainCardParams();">
+                        <span>雨滴效果</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="rainCardEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" id="rainFallParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openRainFallParams();">
+                        <span>下雨效果</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="rainFallEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" id="acMistParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openAcMistParams();">
+                        <span>冷气白雾</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="acMistEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" id="bonfireParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openBonfireParams();">
+                        <span>篝火光照</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="bonfireEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+                <div class="setting-item setting-nav-row" id="fireflyParamsRow">
+                    <div class="setting-nav-left" onclick="event.stopPropagation(); openFireflyParams();">
+                        <span>萤火虫</span>
+                        <span class="setting-nav-arrow">›</span>
+                    </div>
+                    <label class="setting-toggle-label" onclick="event.stopPropagation()">
+                        <input type="checkbox" id="fireflyEnabled" onclick="event.stopPropagation()">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-content" id="thunderCloudParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeThunderCloudParams()">‹ 返回</button>
+                    <span class="settings-panel-title">云雾参数调节</span>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨云量</span>
+                            <span id="thunderCloudValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="thunderCloudSlider" min="0" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>全局雾气</span>
+                            <span id="thunderFogValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">0%</span>
+                        </div>
+                        <input type="range" id="thunderFogSlider" min="0" max="100" value="0" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨云透明度</span>
+                            <span id="thunderCloudOpacityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="thunderCloudOpacitySlider" min="0" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨云厚度</span>
+                            <span id="thunderCloudThicknessValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">50%</span>
+                        </div>
+                        <input type="range" id="thunderCloudThicknessSlider" min="0" max="200" value="50" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨云团簇感</span>
+                            <span id="thunderCloudClusteringValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">50%</span>
+                        </div>
+                        <input type="range" id="thunderCloudClusteringSlider" min="0" max="200" value="50" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨云风速</span>
+                            <span id="thunderCloudSpeedValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="thunderCloudSpeedSlider" min="0" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨云亮度</span>
+                            <span id="thunderCloudBrightnessValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="thunderCloudBrightnessSlider" min="20" max="180" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>闪电频率</span>
+                            <span id="thunderLightningValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">中</span>
+                        </div>
+                        <input type="range" id="thunderLightningSlider" min="0" max="200" value="50" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雷雨画质</span>
+                            <span id="thunderQualityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">低</span>
+                        </div>
+                        <input type="range" id="thunderQualitySlider" min="0" max="100" value="35" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-content" id="rainCardParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeRainCardParams()">‹ 返回</button>
+                    <span class="settings-panel-title">雨滴参数调节</span>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雨滴密度</span>
+                            <span id="rainCardDensityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainCardDensitySlider" min="0" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雨滴大小</span>
+                            <span id="rainCardDropSizeValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainCardDropSizeSlider" min="20" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>折射强度</span>
+                            <span id="rainCardRefractionValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainCardRefractionSlider" min="0" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雨滴亮度</span>
+                            <span id="rainCardBrightnessValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainCardBrightnessSlider" min="0" max="200" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-content" id="rainFallParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeRainFallParams()">‹ 返回</button>
+                    <span class="settings-panel-title">下雨参数调节</span>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雨丝密度</span>
+                            <span id="rainFallDensityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainFallDensitySlider" min="10" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雨丝大小</span>
+                            <span id="rainFallSizeValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainFallSizeSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>飞溅强度</span>
+                            <span id="splashIntensityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="splashIntensitySlider" min="0" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>下落速度</span>
+                            <span id="rainFallSpeedValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="rainFallSpeedSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-content" id="acMistParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeAcMistParams()">‹ 返回</button>
+                    <span class="settings-panel-title">冷气白雾参数调节</span>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>白雾浓度</span>
+                            <span id="acMistIntensityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">80%</span>
+                        </div>
+                        <input type="range" id="acMistIntensitySlider" min="10" max="200" value="80" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>流动速度</span>
+                            <span id="acMistSpeedValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="acMistSpeedSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>扩散宽度</span>
+                            <span id="acMistSpreadValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="acMistSpreadSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>雾流长度</span>
+                            <span id="acMistLengthValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="acMistLengthSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>追踪范围</span>
+                            <span id="acMistAngleValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">30°</span>
+                        </div>
+                        <input type="range" id="acMistAngleSlider" min="0" max="45" value="30" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-content" id="bonfireParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeBonfireParams()">‹ 返回</button>
+                    <span class="settings-panel-title">篝火光照参数调节</span>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>火焰大小</span>
+                            <span id="bonfireSizeValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="bonfireSizeSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>光照强度</span>
+                            <span id="bonfireLightValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="bonfireLightSlider" min="10" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>闪烁频率</span>
+                            <span id="bonfireFlickerValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="bonfireFlickerSlider" min="10" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>火焰高度</span>
+                            <span id="bonfireHeightValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="bonfireHeightSlider" min="30" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+            </div>
+            <div class="settings-content" id="fireflyParamsPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeFireflyParams()">‹ 返回</button>
+                    <span class="settings-panel-title">萤火虫参数调节</span>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>萤火虫密度</span>
+                            <span id="fireflyDensityValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="fireflyDensitySlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>萤火虫大小</span>
+                            <span id="fireflySizeValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="fireflySizeSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>光晕强度</span>
+                            <span id="fireflyGlowValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="fireflyGlowSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>飞行速度</span>
+                            <span id="fireflySpeedValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="fireflySpeedSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+                <div class="setting-item">
+                    <label style="flex-direction: column; align-items: flex-start; gap: 8px;">
+                        <div style="display: flex; justify-content: space-between; width: 100%;">
+                            <span>闪烁频率</span>
+                            <span id="fireflyBlinkFreqValue" style="color: rgba(255,255,255,0.7); font-size: 14px;">100%</span>
+                        </div>
+                        <input type="range" id="fireflyBlinkFreqSlider" min="20" max="300" value="100" class="volume-slider" style="width: 100%;">
+                    </label>
+                </div>
+            </div>
+            <!-- 自定义壁纸管理面板 -->
+            <div class="settings-content wallpaper-panel" id="wallpaperPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeWallpaperPanel()">‹ 返回</button>
+                    <span class="settings-panel-title">自定义壁纸</span>
+                    <div class="panel-help-wrapper" style="margin-left:auto;">
+                        <span class="panel-help-icon">?</span>
+                        <div class="panel-help-tooltip">分别设置浅色和深色模式下的壁纸，支持图片和视频，也可使用相同壁纸</div>
+                    </div>
+                </div>
+                <div class="wallpaper-slots-row">
+                    <div class="wallpaper-slot" id="wallpaperSlotOn">
+                        <div class="wallpaper-slot-header">
+                            <span class="wallpaper-slot-label">💡 浅色壁纸</span>
+                            <button class="wallpaper-reset-btn" onclick="resetWallpaperSlot('on')">恢复默认</button>
+                        </div>
+                        <div class="wallpaper-slot-thumb" id="wallpaperSlotOnThumb" onclick="chooseWallpaperForSlot('on')"></div>
+                    </div>
+                    <div class="wallpaper-slot-same-col">
+                        <label class="wallpaper-same-label">
+                            <input type="checkbox" id="wallpaperSameToggle" onchange="toggleSameWallpaper()">
+                            <span>浅色深色使用同一壁纸</span>
+                        </label>
+                    </div>
+                    <div class="wallpaper-slot" id="wallpaperSlotOff">
+                        <div class="wallpaper-slot-header">
+                            <span class="wallpaper-slot-label">🌙 深色壁纸</span>
+                            <button class="wallpaper-reset-btn" onclick="resetWallpaperSlot('off')">恢复默认</button>
+                        </div>
+                        <div class="wallpaper-slot-thumb" id="wallpaperSlotOffThumb" onclick="chooseWallpaperForSlot('off')"></div>
+                    </div>
+                </div>
+                <div class="wallpaper-gallery-header">
+                    <div class="wallpaper-type-tabs">
+                        <button class="wallpaper-type-tab active" id="wpTabStatic" onclick="switchWallpaperTab('static')">静态壁纸</button>
+                        <button class="wallpaper-type-tab" id="wpTabDynamic" onclick="switchWallpaperTab('dynamic')">动态壁纸</button>
+                    </div>
+                    <button class="wallpaper-add-btn" onclick="importWallpaper()">+ 导入壁纸</button>
+                </div>
+                <div class="wallpaper-gallery" id="wallpaperGallery">
+                    <!-- 动态生成 -->
+                </div>
+                <div class="wallpaper-empty" id="wallpaperEmpty">暂无自定义壁纸，点击上方按钮导入</div>
+            </div>
+            <!-- 词条管理面板 -->
+            <div class="settings-content" id="entryManagerPanel" style="display: none;">
+                <div class="settings-panel-header">
+                    <button class="settings-back-btn" onclick="closeEntryManager()">‹ 返回</button>
+                    <span class="settings-panel-title">词条管理</span>
+                    <div class="panel-help-wrapper" style="margin-left:auto;">
+                        <span class="panel-help-icon">?</span>
+                        <div class="panel-help-tooltip">管理自习词条，可将多个词条归入自定义类别；类别影响自习记录饼状图的显示，未归类的词条各自为一个类别</div>
+                    </div>
+                </div>
+                <div class="entry-manager-body" id="entryManagerBody">
+                    <!-- 动态渲染 -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal" id="stopConfirmModal">
+        <div class="modal-content stop-confirm-content">
+            <h2>结束自习</h2>
+            <p class="stop-confirm-message" id="stopConfirmMessage">本次自习时长: 00:00:00</p>
+            <div class="modal-buttons stop-confirm-buttons">
+                <button class="modal-btn stop-confirm-btn" onclick="confirmStopStudy()">确定</button>
+                <button class="modal-btn stop-confirm-btn" onclick="cancelStopStudy()">取消</button>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="importFile" accept=".json" style="display: none;">
+    <input type="file" id="wallpaperFileInput" accept="image/*" multiple style="display: none;">
+
+    <audio id="bgMusic"></audio>
+    <audio id="wakeAudio" loop muted></audio>
+
+    <script src="app.js"></script>
+
+    <div class="lightning-flash-overlay" id="lightningFlashOverlay"></div>
+
+    <script src="rain-card-fx.js"></script>
+
+    <!-- ===== 页脚（我方定制 · 可逆补丁 zsr-footer）=====
+         dev custom:revert 可一键卸下；dev custom 可查看状态。 -->
+    <footer class="zsr-footer" role="contentinfo">
+        <a class="zsr-footer-link" href="https://pd.qq.com/s/d5i2bnoq1?b=9" target="_blank" rel="noopener noreferrer">专注中高考高效提升 | 张老师的AI自习室</a>
+    </footer>
+    <style>
+/* 页脚样式：浅色磨砂玻璃条 + 中性灰文字。
+   为什么要「高不透明度 + 中性灰」而不是「低透明度 + 浅灰字」：
+     本项目的壁纸有亮（学习模式）有暗（休息模式），浅色条叠在暗壁纸上会被"压"成中灰，
+     若再用浅灰字，实测对比度会掉到 3.3:1 —— 低于 WCAG AA 的 4.5:1。
+     所以取 alpha 0.88 把底色锚在浅色区，文字用中性灰 #4b5563，
+     两种壁纸下对比度都 ≥ 5.7:1（用 ffmpeg 采样实测，见 dev/.cache/verify-footer.mjs）。
+   所有选择器都以 .zsr-footer 限定，避免影响上游任何样式。 */
+.zsr-footer {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 8;
+  display: flex; justify-content: center; align-items: center;
+  padding: 7px 16px calc(7px + env(safe-area-inset-bottom, 0px));
+  background: rgba(255, 255, 255, 0.88);
+  -webkit-backdrop-filter: blur(10px) saturate(1.15);
+  backdrop-filter: blur(10px) saturate(1.15);
+  border-top: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow: 0 -1px 12px rgba(31, 45, 61, 0.06);
+  font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+  pointer-events: none;
+}
+.zsr-footer-link,
+.zsr-footer-link:link,
+.zsr-footer-link:visited,
+.zsr-footer-link:hover,
+.zsr-footer-link:focus,
+.zsr-footer-link:focus-visible,
+.zsr-footer-link:active {
+  /* 四态全部显式声明：浏览器默认会让链接变蓝(:link)、访问后变紫(:visited)并带下划线。
+     用 !important 是因为 style.css 顶部明确在对抗「暗色模式插件覆盖颜色」。 */
+  color: #4b5563 !important;
+  text-decoration: none !important;
+  background: transparent !important;
+}
+.zsr-footer-link {
+  font-size: 12px; font-weight: 500; letter-spacing: 0.5px; line-height: 1.5;
+  white-space: nowrap; pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  transition: color 0.25s ease;
+}
+.zsr-footer-link:hover,
+.zsr-footer-link:focus-visible { color: #1f2937 !important; }
+.zsr-footer-link:focus-visible { outline: 1px dotted rgba(75, 85, 99, 0.7); outline-offset: 3px; }
+@media (max-width: 420px) {
+  .zsr-footer-link { font-size: 11px; letter-spacing: 0.2px; }
+}
+    </style>
+</body>
+</html>
