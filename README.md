@@ -81,7 +81,6 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/Da0Mine/online-study-room.git
 
 # 直接打开 index.html 即可（无需构建、无需安装依赖）
 ```
