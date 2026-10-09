@@ -1,0 +1,25 @@
+# 参考样例（第三方参考项目，不纳入版本库）
+参考样例/
+样例/
+
+# 本地文件备份
+*.bak
+index.html.bak
+
+# 私密文件：仅本地使用
+bug.txt
+待实现功能（仅供用户看，AI勿看）.md
+
+# 编辑器 / IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# WorkBuddy AI 工作数据
+.workbuddy/
+
+# 系统
+Thumbs.db
+.DS_Store
+*.lnk
