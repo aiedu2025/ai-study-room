@@ -3419,3 +3419,49 @@
             font-weight: 600;
         }
 
+        /* ------------------------------------------------------------------
+         * 老浏览器兜底（Chrome ≤ 86）：inset / aspect-ratio 尚未实现
+         *
+         * 症状：背景图「加载不出来」。图片本身是好的 —— 承载它的图层写的是
+         *   position: absolute; inset: -10%;
+         * 而 inset 是 Chrome 87 才有的简写。旧版会把这条声明整条丢掉，
+         * 于是该图层既没有 top/left、也没有宽高 → 盒子塌成 0×0 → 背景无处可画。
+         *
+         * 修法：用最古老的 top/right/bottom/left 补齐（与 inset 完全等价）。
+         * 新浏览器里这四条会被前面的 inset 覆盖成同样的值，零副作用。
+         * ------------------------------------------------------------------ */
+        .parallax-bg,
+        .parallax-bg-study,
+        .parallax-bg-overlay,
+        .parallax-bg-transition,
+        .dynamic-wallpaper-layer {
+            top: -10%;
+            right: -10%;
+            bottom: -10%;
+            left: -10%;
+        }
+
+        .rain-card-canvas {
+            top: 0;
+            right: 0;
+            bottom: 0;
+            left: 0;
+        }
+
+        .fire-glow::before {
+            top: -5px;
+            right: -5px;
+            bottom: -5px;
+            left: -5px;
+        }
+
+        /* 缩略图 16:9：旧版没有 aspect-ratio，用 padding 撑出比例 */
+        @supports not (aspect-ratio: 16 / 9) {
+            .wallpaper-slot-thumb,
+            .wallpaper-thumb {
+                height: 0;
+                padding-bottom: 56.25%;
+            }
+        }
+
+
