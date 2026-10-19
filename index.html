@@ -831,10 +831,15 @@
 .zsr-footer-link:visited,
 .zsr-footer-link:hover,
 .zsr-footer-link:focus,
-.zsr-footer-link:focus-visible,
 .zsr-footer-link:active {
   /* 四态全部显式声明：浏览器默认会让链接变蓝(:link)、访问后变紫(:visited)并带下划线。
-     用 !important 是因为 style.css 顶部明确在对抗「暗色模式插件覆盖颜色」。 */
+     用 !important 是因为 style.css 顶部明确在对抗「暗色模式插件覆盖颜色」。
+
+     注意：这里刻意**不放 :focus-visible**。
+     选择器列表里只要有一个浏览器不认识的选择器，整条规则都会被丢弃 ——
+     :focus-visible 是 Chrome 86 才有的，若与 :link/:visited 写在同一个列表里，
+     旧内核会把整条规则扔掉，链接就退回默认的「紫色 + 下划线」。
+     所以键盘聚焦环单独成条：它被丢，也只丢聚焦环而已。 */
   color: #4b5563 !important;
   text-decoration: none !important;
   background: transparent !important;
@@ -845,9 +850,8 @@
   -webkit-tap-highlight-color: transparent;
   transition: color 0.25s ease;
 }
-.zsr-footer-link:hover,
-.zsr-footer-link:focus-visible { color: #1f2937 !important; }
-.zsr-footer-link:focus-visible { outline: 1px dotted rgba(75, 85, 99, 0.7); outline-offset: 3px; }
+.zsr-footer-link:hover { color: #1f2937 !important; }
+.zsr-footer-link:focus-visible { color: #1f2937 !important; outline: 1px dotted rgba(75, 85, 99, 0.7); outline-offset: 3px; }
 @media (max-width: 420px) {
   .zsr-footer-link { font-size: 11px; letter-spacing: 0.2px; }
 }
